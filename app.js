@@ -934,12 +934,32 @@ function resetAudit(){
 }
 
 let recent=[];const ORDER={A:0,B:1,C:2};
+// Score a saved record with the CURRENT logic by briefly reconstructing the globals the scoring
+// functions read (ah/sel/lh) — exactly as openSaved() does — then restoring them. Runs fully
+// synchronously, so the swap can never overlap a live audit. This keeps the team list in agreement
+// with what you see when you open an audit; the stored grade can be stale after a scoring change.
+function computeSaved(l){
+  const ex=l.extras||{};
+  const prevAh=ah,prevLh=lh,prevAge=sel.age,prevMobile=sel.mobile;
+  try{
+    ah={target:l.domain,dr:l.dr,org_traffic:l.org_traffic,org_keywords:l.org_keywords,org_keywords_1_3:l.org_keywords_1_3,
+      live_refdomains:l.live_refdomains,live_backlinks:l.live_backlinks,paid_keywords:l.running_ads?1:0,paid_pages:null,
+      money:ex.money||null,money_list:ex.money_list||(ex.money?[ex.money]:null),competitors:ex.competitors||null,top_keywords:ex.top_keywords||null,site:ex.site||null};
+    sel.age=l.site_age||'current';sel.mobile=l.mobile||'yes';
+    lh=ex.lighthouse?{status:'done',scores:ex.lighthouse}:{status:'idle',scores:null};
+    const sc=score();
+    return {grade:sc.grade,action:sc.action,pitch:pitchList(sc)};
+  }catch(e){console.error('computeSaved',e);return null;}
+  finally{ah=prevAh;lh=prevLh;sel.age=prevAge;sel.mobile=prevMobile;}
+}
 async function loadRecent(){
   let q=sb.from('prospects').select('*');
   if(partner)q=q.eq('partner',partner.slug);
   const {data,error}=await q.order('created_at',{ascending:false}).limit(200);
   if(error){console.error(error);return;}
-  recent=data||[];renderRecent();
+  // Recompute grade/action/pitch from the stored snapshot so the list matches the opened audit.
+  recent=(data||[]).map(l=>{const c=computeSaved(l);if(c){l.grade=c.grade;l.action=c.action;l.pitch=c.pitch;}return l;});
+  renderRecent();
 }
 function teamView(){
   const list=[...recent].sort((a,b)=>(ORDER[a.grade]??9)-(ORDER[b.grade]??9)||new Date(b.created_at)-new Date(a.created_at));
