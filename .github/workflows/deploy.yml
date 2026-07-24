@@ -17,6 +17,9 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: ${{ secrets.FTP_SERVER_DIR }}
           local-dir: ./
+          # The passive data connection times out over plain FTP; try FTPS (TLS) in case the
+          # host now requires secure FTP. Falls back cleanly if the host doesn't support it.
+          protocol: ftps
           exclude: |
             **/.git/**
             **/.github/**
