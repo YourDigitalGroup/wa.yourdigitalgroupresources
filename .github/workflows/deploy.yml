@@ -9,17 +9,28 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: SamKirkland/FTP-Deploy-Action@4.3.2
+      - uses: actions/checkout@v6
+
+      # Stage only the site files so .git/.github can never be uploaded to the live server.
+      # NOTE: the rewrite file MUST land as ".htaccess" (with the dot) or Apache ignores it and
+      # partner slug URLs (/44i, /wtd, …) 404.
+      - name: Stage deploy files
+        run: |
+          mkdir -p dist
+          cp app.js config.js .htaccess index.html styles.css dist/
+
+      # SFTP (over SSH, port 22) instead of plain FTP. Plain FTP and FTPS both authenticated
+      # fine but timed out opening the passive data connection (host firewall blocks the passive
+      # port range). SFTP uses a single connection and sidesteps that entirely.
+      - name: Deploy over SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          server-dir: ${{ secrets.FTP_SERVER_DIR }}
-          local-dir: ./
-          exclude: |
-            **/.git/**
-            **/.github/**
-            **/node_modules/**
-            README.md
-            .gitignore
+          port: 22
+          # Directory form (not './dist/*') so hidden files like .htaccess are included —
+          # a '*' glob skips dotfiles and would silently drop .htaccess.
+          local_path: './dist/'
+          remote_path: ${{ secrets.FTP_SERVER_DIR }}
+          sftp_only: true
